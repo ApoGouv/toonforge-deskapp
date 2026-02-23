@@ -301,7 +301,7 @@ class ToonForgeApp:
         ToolTip(self.l_edge, "Step 2: Detect edges using adaptive thresholding.")
         ToolTip(self.l_smooth, "Step 3: Smooth colors while preserving boundaries.")
         ToolTip(self.l_quant, "Step 4: Reduce color palette (cartoon effect).")
-        ToolTip(self.l_final, "Final result after blending colors and edges.")
+        ToolTip(self.l_final, "Final result after blending colors and edges.", position="top")
 
 
     # ---------------------------
