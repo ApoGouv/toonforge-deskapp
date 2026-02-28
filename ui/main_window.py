@@ -12,6 +12,7 @@ from ui.image_utils import display_image
 from ui.panels.action_buttons import ActionButtons
 from ui.panels.header_panel import HeaderPanel
 from ui.panels.options_panel import OptionsPanel
+from ui.panels.step_previews_panel import StepPreviewsPanel
 from ui.theme import THEME
 from ui.tooltip import ToolTip
 from utils.fs_utils import get_save_path
@@ -147,12 +148,7 @@ class ToonForgeApp:
         self.options_panel.set_presets_enabled(pm.supports_presets)
 
         # ---- Step Previews ----
-        if pm.supports_preview:
-            for f in [self.f_gray, self.f_edge, self.f_smooth, self.f_quant]:
-                f.grid()
-        else:
-            for f in [self.f_gray, self.f_edge, self.f_smooth, self.f_quant]:
-                f.grid_remove()
+        self.step_previews.show_steps(pm.supports_preview)
 
     def _create_header(self):
         """App header title and subtitle."""
@@ -218,29 +214,8 @@ class ToonForgeApp:
 
     def _create_step_previews(self):
         """Creates the grid for stepped results."""
-        self.right_panel.rowconfigure((0,1,2), weight=1)
-        self.right_panel.columnconfigure((0,1), weight=1)
-
-        def make_slot(row, col, title, span=1):
-            f = Frame(self.right_panel, bg=THEME["bg_panel"], bd=1, relief="solid")
-            f.grid(row=row, column=col, columnspan=span, sticky="nsew", padx=2, pady=2)
-            Label(f, text=title, font=(THEME["font_family"], 8, "bold"), bg=THEME["bg_panel"]).pack(anchor="w")
-            lbl = Label(f, bg="#eee")
-            lbl.pack(fill="both", expand=True)
-            return f, lbl
-
-        self.f_gray, self.l_gray = make_slot(0, 0, "1. Grayscale")
-        self.f_edge, self.l_edge = make_slot(0, 1, "2. Edge Detection")
-        self.f_smooth, self.l_smooth = make_slot(1, 0, "3. Smoothed Colors")
-        self.f_quant, self.l_quant = make_slot(1, 1, "4. Quantized Colors")
-        self.f_final, self.l_final = make_slot(2, 0, "FINAL RESULT", span=2)
-
-        ToolTip(self.l_gray, "Step 1: Convert image to grayscale.\nUsed for edge detection.")
-        ToolTip(self.l_edge, "Step 2: Detect edges using adaptive thresholding.")
-        ToolTip(self.l_smooth, "Step 3: Smooth colors while preserving boundaries.")
-        ToolTip(self.l_quant, "Step 4: Reduce color palette (cartoon effect).")
-        ToolTip(self.l_final, "Final result after blending colors and edges.", position="top")
-
+        self.step_previews = StepPreviewsPanel(self.right_panel)
+        self.step_previews.pack(fill="both", expand=True)
 
     # ---------------------------
     # Core Methods
@@ -278,8 +253,7 @@ class ToonForgeApp:
         self.cartoon_image = None
 
         # Clear preview slots
-        for lbl in [self.l_gray, self.l_edge, self.l_smooth, self.l_quant, self.l_final]:
-            lbl.config(image="", text="")
+        self.step_previews.clear();
 
         display_image(img, self.original_label, (400, 300))
 
@@ -415,8 +389,7 @@ class ToonForgeApp:
 
         # Ensure step frames are visible if doing a preview
         if preview:
-            for f in [self.f_gray, self.f_edge, self.f_smooth, self.f_quant]: 
-                f.grid()
+            self.step_previews.show_steps(self.pipeline_manager.supports_preview)
 
         mode_str = "Preview (40% scale)" if preview else "Full Resolution"
         self.notify(f"Starting {mode_str} processing...")
@@ -458,16 +431,19 @@ class ToonForgeApp:
         self.cartoon_image = cartoon
 
         if is_preview:
-            display_image(gray, self.l_gray, (250, 180))
-            display_image(edges, self.l_edge, (250, 180))
-            display_image(smoothed, self.l_smooth, (250, 180))
-            display_image(quantized, self.l_quant, (250, 180))
-            display_image(cartoon, self.l_final, (600, 350))
+            self.step_previews.show_steps(True)
+            self.step_previews.update_preview(
+                gray=gray,
+                edge=edges,
+                smooth=smoothed,
+                quant=quantized,
+                final=cartoon
+            )
             self.notify("Success: Preview generated. Showing intermediate steps.")
         else:
             # Hide steps on full apply to focus on final
-            for f in [self.f_gray, self.f_edge, self.f_smooth, self.f_quant]: f.grid_remove()
-            display_image(cartoon, self.l_final, (800, 600))
+            self.step_previews.show_steps(False)
+            self.step_previews.update_final_only(cartoon)
             self.notify("Success: Full Cartoonified image ready.")
 
     # ---------------------------
