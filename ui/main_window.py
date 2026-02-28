@@ -1,28 +1,20 @@
-import threading
-import os
-import cv2
 import datetime
+import os
+import threading
 import tkinter as tk
-from tkinter import filedialog, Frame, ttk, Scale, HORIZONTAL, Label, Button
+from tkinter import HORIZONTAL, Frame, Label, Scale, filedialog, ttk
+
+import cv2
 
 from pipeline import CartoonPipeline
-from utils import display_image, get_save_path
-from tooltip import ToolTip
+from ui.image_utils import display_image
+from ui.panels.action_buttons import ActionButtons
+from ui.panels.header_panel import HeaderPanel
+from ui.panels.options_panel import OptionsPanel
+from ui.theme import THEME
+from ui.tooltip import ToolTip
+from utils.fs_utils import get_save_path
 
-# ---------------------------
-# Theming Configuration
-# ---------------------------
-THEME = {
-    "bg_main": "#f0f0f0",
-    "bg_panel": "#ffffff",
-    "bg_console": "#1e1e1e",
-    "fg_console": "#00ff00",
-    "accent": "#4a90e2",
-    "text_main": "#333333",
-    "text_dim": "#666666",
-    "font_family": "Segoe UI",
-    "font_mono": "Consolas"
-}
 
 class ToonForgeApp:
 
@@ -100,6 +92,8 @@ class ToonForgeApp:
 
         self._setup_layout()
         self._create_widgets()
+        # Disable controls until image is loaded
+        self.set_ui_state(False)
         self.notify("ToonForge initialized. Awaiting image input.")
     
     # ---------------------------
@@ -134,123 +128,39 @@ class ToonForgeApp:
 
     def _create_header(self):
         """App header title and subtitle."""
-        Label(self.left_panel, text="🖌 ToonForge", font=(THEME["font_family"], 18, "bold"), bg=THEME["bg_main"]).pack(anchor="w")
-        Label(self.left_panel, text="Turn your photos into cartoons", font=(THEME["font_family"], 10), bg=THEME["bg_main"], fg=THEME["text_dim"]).pack(anchor="w", pady=(0, 10))
+        self.header = HeaderPanel(self.left_panel)
+        self.header.pack(fill="x")
 
     def _create_action_buttons(self):
         """Action buttons: Open, Preview, Cartoonify, Save"""
-        btn_frame = Frame(self.left_panel, bg=THEME["bg_main"])
-        btn_frame.pack(fill="x", pady=5)
-        
-        self.open_btn = Button(btn_frame, text="📂 Open", command=self.open_image)
-        self.preview_btn = Button(btn_frame, text="🔍 Preview", command=self.preview_image)
-        self.cartoon_btn = Button(btn_frame, text="🎨 Cartoonify", command=self.apply_cartoon)
-        self.save_btn = Button(btn_frame, text="💾 Save", command=self.save_image)
-
-        for i, btn in enumerate([self.open_btn, self.preview_btn, self.cartoon_btn, self.save_btn]):
-            btn.grid(row=0, column=i, padx=2, sticky="ew")
-            btn_frame.columnconfigure(i, weight=1)
+        self.action_buttons = ActionButtons(self.left_panel, callbacks={
+            "open": self.open_image,
+            "preview": self.preview_image,
+            "cartoon": self.apply_cartoon,
+            "save": self.save_image
+        })
+        self.action_buttons.pack(fill="x", pady=5)
 
     def _create_options_panel(self):
         """Processing options panel with sliders and dropdowns."""
-        self.options_frame = Frame(self.left_panel, bg=THEME["bg_main"], pady=10)
-        self.options_frame.pack(fill="x")
-        self.options_frame.columnconfigure(2, weight=1) # Allow sliders to expand
-
-        # Preset Row
-        self.preset_combo = self._add_option_combobox(
-            label_text="Style Preset:",
-            optionValues=list(self.PRESETS.keys()),
-            onSelectedCommand=self.apply_preset,
-            row=0,
-            default="Custom",
-            span=2
+        self.options_panel = OptionsPanel(
+            self.left_panel,
+            presets=self.PRESETS,
+            smooth_modes=self.SMOOTH_MODES,
+            color_modes=self.COLOR_MODES,
+            blend_modes=self.BLEND_MODES,
+            callbacks={
+                "preset": self.on_preset_selected,
+                "smooth_mode": self.on_smoothing_mode_selected,
+                "smooth_val": self.on_smoothing_strength_changed,
+                "color_mode": self.on_color_mode_selected,
+                "color_val": self.on_color_depth_changed,
+                "blend_mode": self.on_blend_mode_selected,
+                "edge_val": self.on_edge_strength_changed,
+                "denoise": self.on_denoise_toggled
+            }
         )
-
-         # ---- Smoothing Group ----
-        self.smooth_mode = self._add_option_combobox(
-            label_text="Smoothing Type",
-            optionValues=list(self.SMOOTH_MODES.keys()),
-            onSelectedCommand=self.on_smooth_mode_change,
-            row=1
-        )
-
-        self.smooth_slider = self._add_option_slider(
-            from_=1, 
-            to=10,
-            onSelectedCommand=self.on_smooth_change,
-            row=1, 
-            col=2,
-            default=5
-        )
-
-        # ---- Color Group ----
-        self.color_mode = self._add_option_combobox(
-            label_text="Color Mode",
-            optionValues=list(self.COLOR_MODES.keys()),
-            onSelectedCommand=self.on_color_mode_change,
-            row=2
-        )
-
-        self.color_slider = self._add_option_slider(
-            from_=2, 
-            to=40,
-            onSelectedCommand=self.on_color_change,
-            row=2, 
-            col=2,
-            default=20
-        )
-
-        # ---- Blending & Edges Group ----
-        self.blend_mode = self._add_option_combobox(
-            label_text="Blend Mode",
-            optionValues=list(self.BLEND_MODES.keys()),
-            onSelectedCommand=self.on_blend_mode_change,
-            row=3
-        )
-
-        self.edge_slider = self._add_option_slider(
-            from_=3, 
-            to=15,
-            onSelectedCommand=self.on_edge_change,
-            row=3, 
-            col=2,
-            default=9,
-            resIncStep=2  # Enforces ODD numbers: 3, 5, 7, etc.
-        )
-
-        # ---- Denoising ----
-        self.denoise_var = tk.BooleanVar(value=False)
-        self.denoise_check = ttk.Checkbutton(
-            self.options_frame, 
-            text="Deep Denoise (High Quality / Slower)", 
-            variable=self.denoise_var,
-            command=self.on_denoise_toggle
-        )
-        self.denoise_check.grid(row=4, column=0, columnspan=2, sticky="w", padx=5)
-
-        # Apply tooltips
-        self._apply_tooltips_to_options()
-
-    def _apply_tooltips_to_options(self):
-        """Attaches tooltips to all action buttons and options controls."""
-        ToolTip(self.open_btn, "Open an image file (JPG, PNG, WEBP).")
-        ToolTip(self.preview_btn, 
-                "Run the cartoon pipeline on a scaled image (40%).\n"
-                "Fast preview with all intermediate steps shown.")
-        ToolTip(self.cartoon_btn, 
-                "Run the full-resolution cartoon pipeline.\n"
-                "Higher quality, slower processing.")
-        ToolTip(self.save_btn, 
-                "Save the final cartoonified image to disk.")
-
-        ToolTip(self.smooth_slider, "Controls how much the colors are smoothed.\nHigher = softer, painterly look.")
-        ToolTip(self.color_slider, "Number of color regions in the final image.\nHigher = more detail, lower = posterized look.")
-        ToolTip(self.edge_slider, "Controls thickness and intensity of outlines.\nHigher = bolder edges.")
-        ToolTip(self.smooth_mode, "Selects the smoothing algorithm.\nSome are faster than others.")
-        ToolTip(self.color_mode, "Selects how colors are reduced.\nDifferent algorithms give different styles.")
-        ToolTip(self.blend_mode, "Hard: Sharp black lines.\nMask: Pure colors with cut-out edges.\nOverlay: Subtle lines blended into colors.")
-        ToolTip(self.preset_combo, "Choose a pre-configured style.\nThis will automatically move all sliders for you!")
+        self.options_panel.pack(fill="x")
 
     def _create_log_console(self):
         """Activity log console."""
@@ -346,6 +256,8 @@ class ToonForgeApp:
         display_image(img, self.original_label, (400, 300))
 
         self.notify(f"Image loaded: {os.path.basename(file_path)} ({img.shape[1]}x{img.shape[0]})")
+        self.set_ui_state(True)
+        self.notify("Image loaded. Adjust settings or choose a preset.")
 
     def save_image(self):
         if self.cartoon_image is None:
@@ -364,64 +276,29 @@ class ToonForgeApp:
         new_h = int(h * scale)
         return cv2.resize(self.pipeline.original, (new_w, new_h), interpolation=cv2.INTER_AREA)
 
-    def apply_preset(self, event=None):
-        preset_name = self.preset_combo.get()
-        if preset_name == "Custom" or not self.pipeline:
+    def on_preset_selected(self, event=None):
+        if not self.pipeline:
+            self.notify("Load an image first to use presets.", color="#c0392b")
+            return
+        
+        preset_name = self.options_panel.preset_combo.get()
+        if preset_name == "Custom":
             return
 
         self.notify(f"Applying Preset: {preset_name}")
         settings = self.PRESETS[preset_name]
 
-        # Disable mark_custom while applying preset
-        self._applying_preset = True
+        self.options_panel.load_preset(settings)
 
-        if "denoise" in settings:
-            self.denoise_var.set(settings["denoise"])
-            self.on_denoise_toggle();
-        else:
-            self.denoise_var.set(False)
-            self.on_denoise_toggle()
+        self.root.after(
+            200,
+            lambda: self.notify(f"Preset '{preset_name}' ready!", color="#4a90e2")
+        )
 
-        # Reverse maps
-        inv_smooth = {v: k for k, v in self.SMOOTH_MODES.items()}
-        inv_color = {v: k for k, v in self.COLOR_MODES.items()}
-        inv_blend = {v: k for k, v in self.BLEND_MODES.items()}
 
-        # Update UI Components
-
-        # Handle Comboboxes (These do NOT trigger callbacks on .set())
-        self.smooth_mode.set(inv_smooth[settings["smooth_mode"]])
-        self.on_smooth_mode_change()
-
-        self.color_mode.set(inv_color[settings["color_mode"]])
-        self.on_color_mode_change()
-
-        self.blend_mode.set(inv_blend[settings["blend_mode"]])
-        self.on_blend_mode_change()
-
-        # Handle Sliders (These DO trigger callbacks on .set())
-        # We do NOT call the on_change functions manually here to avoid double-processing
-        self.smooth_slider.set(settings["smooth_val"])
-        self.color_slider.set(settings["color_val"])
-        self.edge_slider.set(settings["edge_val"])
-        
-        # 4. Wait for the event queue to clear before allowing 'Custom' mode
-        # 100-200ms is usually enough to swallow all 'Value Changed' events
-        self.root.after(200, lambda: self._finish_preset_application(preset_name))
-
-    def _finish_preset_application(self, name):
-        """Finalizes the preset application after the UI events have settled."""
-        # Re-enable custom marking
-        self._applying_preset = False
-        self.notify(f"Preset: {name} is ready!", color="#4a90e2")
-
-    def mark_custom(self):
-        if not self._applying_preset and self.preset_combo.get() != "Custom":
-            self.preset_combo.set("Custom")
-
-    def on_denoise_toggle(self):
+    def on_denoise_toggled(self):
         if not self.pipeline: return
-        self.pipeline.use_denoise = self.denoise_var.get()
+        self.pipeline.use_denoise = self.options_panel.denoise_var.get()
         # Denoising affects everything, so clear all caches
         self.pipeline.invalidate_denoise()
         self.notify(f"Denoising set to {self.pipeline.use_denoise}. Re-process to see effect.")
@@ -429,67 +306,66 @@ class ToonForgeApp:
     # ---------------------------
     # Slider Callbacks (Selective Recompute)
     # ---------------------------
-    def on_smooth_mode_change(self, _=None):
+    def on_smoothing_mode_selected(self, _=None):
         if not self.pipeline:
             return
         
-        selected = self.smooth_mode.get()
+        selected = self.options_panel.smooth_mode.get()
         self.pipeline.smooth_mode = self.SMOOTH_MODES[selected]
         self.pipeline.invalidate_smoothing()
         self.pipeline.invalidate_quantization()
-        self.mark_custom()
+
         self.notify(f"Smoothing algorithm changed to {selected}. Click Preview/Cartoonify to update.")
 
-    def on_smooth_change(self, _=None):
+    def on_smoothing_strength_changed(self, _=None):
         if not self.pipeline:
             return
-        val = self.smooth_slider.get()
+        val = self.options_panel.smooth_slider.get()
         self.pipeline.smooth_passes = val
         self.pipeline.invalidate_smoothing()
         self.pipeline.invalidate_quantization()
-        self.mark_custom()
+
         self.notify(f"Smoothing algorithm set to {val}. Click Preview/Cartoonify to update.")
 
-    def on_color_mode_change(self, event=None):
+    def on_color_mode_selected(self, event=None):
         if not self.pipeline:
             return
 
-        selected = self.color_mode.get()
+        selected = self.options_panel.color_mode.get()
         self.pipeline.color_mode = self.COLOR_MODES[selected]
         self.pipeline.invalidate_quantization()
-        self.mark_custom()
+
         self.notify(f"Color algorithm changed to {selected}. Click Preview/Cartoonify to update.")
 
-    def on_color_change(self, _=None):
+    def on_color_depth_changed(self, _=None):
         if not self.pipeline:
             return
-        val = self.color_slider.get()
+        val = self.options_panel.color_slider.get()
         self.pipeline.num_colors = val
         self.pipeline.invalidate_quantization()
-        self.mark_custom()
+
         self.notify(f"Color Levels set to {val}. Click Preview/Cartoonify to update.")
 
-    def on_blend_mode_change(self, _=None):
+    def on_blend_mode_selected(self, _=None):
         if not self.pipeline:
             return
 
-        selected = self.blend_mode.get()
+        selected = self.options_panel.blend_mode.get()
         self.pipeline.blend_mode = self.BLEND_MODES[selected]
-        self.mark_custom()
 
         # No invalidation needed here! 
         # The previous steps are still valid in memory.
         self.notify(f"Blend Mode changed to {selected}. Click Preview/Cartoonify to update.")
 
-    def on_edge_change(self, _=None):
+    def on_edge_strength_changed(self, _=None):
         if not self.pipeline:
             return
-        val = self.edge_slider.get()
+        val = self.options_panel.edge_slider.get()
         if val % 2 == 0:
             val += 1
         self.pipeline.edge_block = val
         self.pipeline.invalidate_edges()
-        self.mark_custom()
+
         self.notify(f"Edge Strength set to {val}. Click Preview/Cartoonify to update.")
 
     # ---------------------------
@@ -500,7 +376,11 @@ class ToonForgeApp:
     def apply_cartoon(self): self.run_processing(preview=False)
 
     def run_processing(self, preview=True):
-        if self._is_processing or not self.pipeline:
+        if self._is_processing:
+            return
+        
+        if not self.pipeline:
+            self.notify("Please load an image first.", color="orange")
             return
         
         self._is_processing = True
@@ -536,7 +416,14 @@ class ToonForgeApp:
         except Exception as e:
             # Capture the error message as a standard string variable
             error_msg = str(e) 
-            self.root.after(0, lambda: self.notify(f"ERROR: {error_msg}"))
+            self.root.after(0, lambda: self._on_processing_error(error_msg))
+
+    def _on_processing_error(self, message):
+        self._is_processing = False
+        self.progress.stop()
+        self.progress.pack_forget()
+        self.set_ui_state(True)
+        self.notify(f"ERROR: {message}", color="red")
 
     def _on_processing_done(self, results, is_preview):
         self._is_processing = False
@@ -563,49 +450,11 @@ class ToonForgeApp:
     # ---------------------------
     # UI Helpers
     # ---------------------------
-    def _add_option_combobox(self, label_text, optionValues, onSelectedCommand, row, default=None, span=1):
-        """Creates label and dropdown, then sets the default value."""
-        Label(self.options_frame, text=label_text, bg=THEME["bg_main"], anchor="w").grid(row=row, column=0, sticky="w", pady=5)
-        
-        combo = ttk.Combobox(self.options_frame, values=optionValues, state="readonly", width=15)
-        
-        if default is not None:
-            combo.set(default)
-        else:
-            combo.set(optionValues[0])
-
-        combo.grid(row=row, column=1, columnspan=span, padx=5, sticky="ew")
-        combo.bind("<<ComboboxSelected>>", onSelectedCommand)
-            
-        return combo
-
-    def _add_option_slider(self, from_, to, onSelectedCommand, row, col, default=None, resIncStep=1):
-        """Creates slider with specific resolution (increment step) and sets initial position."""
-        slider = Scale(
-            self.options_frame, 
-            from_=from_, to=to, 
-            resolution=resIncStep,
-            orient=HORIZONTAL, 
-            bg=THEME["bg_main"], 
-            command=onSelectedCommand,
-            highlightthickness=0,
-            font=(THEME["font_family"], 8)
-        )
-        if default is not None:
-            slider.set(default)
-
-        slider.grid(row=row, column=col, sticky="ew", padx=5)
-
-        return slider
 
     def set_ui_state(self, enabled: bool):
-        state = "normal" if enabled else "disabled"
-        # Buttons
-        for btn in [self.open_btn, self.preview_btn, self.cartoon_btn, self.save_btn]:
-            btn.config(state=state)
+        # Action buttons
+        self.action_buttons.set_open_enabled(True)   # ALWAYS enabled
+        self.action_buttons.set_processing_enabled(enabled)
+
         # Options
-        for w in [self.smooth_slider, self.color_slider, self.edge_slider, 
-                  self.smooth_mode, self.color_mode, self.blend_mode, 
-                  self.preset_combo, self.denoise_check]:
-            try: w.config(state=state)
-            except: pass # Handle ttk widgets differently if needed
+        self.options_panel.set_state(enabled)

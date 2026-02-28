@@ -1,5 +1,5 @@
 from tkinter import Tk
-from app import ToonForgeApp
+from ui.main_window import ToonForgeApp
 
 # ---------------------------
 # Run App
