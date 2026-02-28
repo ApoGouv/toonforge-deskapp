@@ -35,6 +35,15 @@ class ActionButtons(tk.Frame):
     def set_open_enabled(self, enabled: bool):
         self.open_btn.config(state="normal" if enabled else "disabled")
 
+    def set_preview_visible(self, visible: bool):
+        if visible:
+            self.preview_btn.grid()
+        else:
+            self.preview_btn.grid_remove()
+
+    def set_cartoon_enabled(self, enabled: bool):
+        self.cartoon_btn.config(state="normal" if enabled else "disabled")
+
     def set_processing_enabled(self, enabled: bool):
         state = "normal" if enabled else "disabled"
         for btn in (self.preview_btn, self.cartoon_btn, self.save_btn):

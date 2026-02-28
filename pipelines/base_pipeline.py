@@ -30,3 +30,29 @@ class BasePipeline(ABC):
         Pipelines that support preview override this.
         """
         raise NotImplementedError("Preview not supported by this pipeline")
+    
+    def set_option(self, name: str, value):
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support options"
+        )
+    
+    @property
+    def has_image(self):
+        return self.image is not None
+
+    def get_preview_image(self, scale=0.4):
+        """
+        Default behavior: resize original image.
+        Pipelines may override.
+        """
+        if not self.has_image:
+            return None
+
+        import cv2
+        h, w = self.image.shape[:2]
+        return cv2.resize(
+            self.image,
+            (int(w * scale), int(h * scale)),
+            interpolation=cv2.INTER_AREA
+        )
+    

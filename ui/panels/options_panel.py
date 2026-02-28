@@ -115,6 +115,10 @@ class OptionsPanel(tk.Frame):
     def _mark_custom_if_needed(self):
       if not self._applying_preset and self.preset_combo.get() != "Custom":
           self.preset_combo.set("Custom")
+    
+    def set_presets_enabled(self, enabled: bool):
+      state = "readonly" if enabled else "disabled"
+      self.preset_combo.config(state=state)
 
     def set_state(self, enabled: bool):
         """Enable or disable all controls in the panel."""

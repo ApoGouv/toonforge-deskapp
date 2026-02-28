@@ -6,7 +6,8 @@ from tkinter import HORIZONTAL, Frame, Label, Scale, filedialog, ttk
 
 import cv2
 
-from pipeline import CartoonPipeline
+from pipelines.pipeline_manager import PipelineManager
+from pipelines.pipeline_controller import PipelineController
 from ui.image_utils import display_image
 from ui.panels.action_buttons import ActionButtons
 from ui.panels.header_panel import HeaderPanel
@@ -83,15 +84,18 @@ class ToonForgeApp:
         self.root.minsize(1200, 800)
         self.root.configure(bg=THEME["bg_main"])
 
+        self.pipeline_manager = PipelineManager()
+        self.pipeline_controller = PipelineController(self.pipeline_manager)
+
         # State
-        self.pipeline = None
         self.cartoon_image = None
         self.image_path = None
         self._is_processing = False
-        self._applying_preset = False
 
         self._setup_layout()
         self._create_widgets()
+        self._sync_ui_with_pipeline()
+
         # Disable controls until image is loaded
         self.set_ui_state(False)
         self.notify("ToonForge initialized. Awaiting image input.")
@@ -125,6 +129,30 @@ class ToonForgeApp:
         self._create_original_preview()
         self._create_step_previews()
         self._create_status_bar()
+
+    def _sync_ui_with_pipeline(self):
+        pm = self.pipeline_manager
+
+        # ---- Action Buttons ----
+        self.action_buttons.set_preview_visible(pm.supports_preview)
+        self.action_buttons.set_cartoon_enabled(True)  # Always allowed once image exists
+
+        # ---- Options Panel ----
+        if pm.supports_options:
+            self.options_panel.pack(fill="x")
+        else:
+            self.options_panel.pack_forget()
+
+        # ---- Presets ----
+        self.options_panel.set_presets_enabled(pm.supports_presets)
+
+        # ---- Step Previews ----
+        if pm.supports_preview:
+            for f in [self.f_gray, self.f_edge, self.f_smooth, self.f_quant]:
+                f.grid()
+        else:
+            for f in [self.f_gray, self.f_edge, self.f_smooth, self.f_quant]:
+                f.grid_remove()
 
     def _create_header(self):
         """App header title and subtitle."""
@@ -246,7 +274,7 @@ class ToonForgeApp:
         self.image_path = file_path
         img = cv2.imread(file_path)
 
-        self.pipeline = CartoonPipeline(img)
+        self.pipeline_manager.set_image(img)
         self.cartoon_image = None
 
         # Clear preview slots
@@ -256,6 +284,8 @@ class ToonForgeApp:
         display_image(img, self.original_label, (400, 300))
 
         self.notify(f"Image loaded: {os.path.basename(file_path)} ({img.shape[1]}x{img.shape[0]})")
+
+        self._sync_ui_with_pipeline()
         self.set_ui_state(True)
         self.notify("Image loaded. Adjust settings or choose a preset.")
 
@@ -269,16 +299,8 @@ class ToonForgeApp:
 
         self.notify(f"Success: Result saved to {os.path.basename(output_path)}")
 
-    def get_preview_image(self, scale=0.4):
-        self.notify("Scaling image for preview...")
-        h, w = self.pipeline.original.shape[:2]
-        new_w = int(w * scale)
-        new_h = int(h * scale)
-        return cv2.resize(self.pipeline.original, (new_w, new_h), interpolation=cv2.INTER_AREA)
-
     def on_preset_selected(self, event=None):
-        if not self.pipeline:
-            self.notify("Load an image first to use presets.", color="#c0392b")
+        if not self._require_image("Load an image first to use presets."):
             return
         
         preset_name = self.options_panel.preset_combo.get()
@@ -295,78 +317,85 @@ class ToonForgeApp:
             lambda: self.notify(f"Preset '{preset_name}' ready!", color="#4a90e2")
         )
 
-
     def on_denoise_toggled(self):
-        if not self.pipeline: return
-        self.pipeline.use_denoise = self.options_panel.denoise_var.get()
-        # Denoising affects everything, so clear all caches
-        self.pipeline.invalidate_denoise()
-        self.notify(f"Denoising set to {self.pipeline.use_denoise}. Re-process to see effect.")
+        if not self._require_image():
+            return
+        
+        value = self.options_panel.denoise_var.get()
+        self.pipeline_controller.set_option("denoise", value)
+
+        self.notify(
+            f"Denoising set to {value}. Re-process to see effect."
+        )
 
     # ---------------------------
     # Slider Callbacks (Selective Recompute)
     # ---------------------------
     def on_smoothing_mode_selected(self, _=None):
-        if not self.pipeline:
+        if not self._require_image():
             return
         
         selected = self.options_panel.smooth_mode.get()
-        self.pipeline.smooth_mode = self.SMOOTH_MODES[selected]
-        self.pipeline.invalidate_smoothing()
-        self.pipeline.invalidate_quantization()
+        self.pipeline_controller.set_option(
+            "smooth_mode",
+            self.SMOOTH_MODES[selected]
+        )
 
         self.notify(f"Smoothing algorithm changed to {selected}. Click Preview/Cartoonify to update.")
 
     def on_smoothing_strength_changed(self, _=None):
-        if not self.pipeline:
+        if not self._require_image():
             return
-        val = self.options_panel.smooth_slider.get()
-        self.pipeline.smooth_passes = val
-        self.pipeline.invalidate_smoothing()
-        self.pipeline.invalidate_quantization()
+        
+        value = self.options_panel.smooth_slider.get()
+        self.pipeline_controller.set_option("smooth_passes", value)
 
-        self.notify(f"Smoothing algorithm set to {val}. Click Preview/Cartoonify to update.")
+        self.notify(f"Smoothing algorithm set to {value}. Click Preview/Cartoonify to update.")
 
     def on_color_mode_selected(self, event=None):
-        if not self.pipeline:
+        if not self._require_image():
             return
 
         selected = self.options_panel.color_mode.get()
-        self.pipeline.color_mode = self.COLOR_MODES[selected]
-        self.pipeline.invalidate_quantization()
+        self.pipeline_controller.set_option(
+            "color_mode",
+            self.COLOR_MODES[selected]
+        )
 
         self.notify(f"Color algorithm changed to {selected}. Click Preview/Cartoonify to update.")
 
     def on_color_depth_changed(self, _=None):
-        if not self.pipeline:
+        if not self._require_image():
             return
-        val = self.options_panel.color_slider.get()
-        self.pipeline.num_colors = val
-        self.pipeline.invalidate_quantization()
+        
+        value = self.options_panel.color_slider.get()
+        self.pipeline_controller.set_option("num_colors", value)
 
-        self.notify(f"Color Levels set to {val}. Click Preview/Cartoonify to update.")
+        self.notify(f"Color Levels set to {value}. Click Preview/Cartoonify to update.")
 
     def on_blend_mode_selected(self, _=None):
-        if not self.pipeline:
+        if not self._require_image():
             return
 
         selected = self.options_panel.blend_mode.get()
-        self.pipeline.blend_mode = self.BLEND_MODES[selected]
+        self.pipeline_controller.set_option(
+            "blend_mode",
+            self.BLEND_MODES[selected]
+        )
 
-        # No invalidation needed here! 
-        # The previous steps are still valid in memory.
         self.notify(f"Blend Mode changed to {selected}. Click Preview/Cartoonify to update.")
 
     def on_edge_strength_changed(self, _=None):
-        if not self.pipeline:
+        if not self._require_image():
             return
-        val = self.options_panel.edge_slider.get()
-        if val % 2 == 0:
-            val += 1
-        self.pipeline.edge_block = val
-        self.pipeline.invalidate_edges()
+        
+        value = self.options_panel.edge_slider.get()
+        if value % 2 == 0:
+            value += 1
+        
+        self.pipeline_controller.set_option("edge_block", value)
 
-        self.notify(f"Edge Strength set to {val}. Click Preview/Cartoonify to update.")
+        self.notify(f"Edge Strength set to {value}. Click Preview/Cartoonify to update.")
 
     # ---------------------------
     # Processing
@@ -376,11 +405,7 @@ class ToonForgeApp:
     def apply_cartoon(self): self.run_processing(preview=False)
 
     def run_processing(self, preview=True):
-        if self._is_processing:
-            return
-        
-        if not self.pipeline:
-            self.notify("Please load an image first.", color="orange")
+        if self._is_processing or not self._require_image():
             return
         
         self._is_processing = True
@@ -390,33 +415,31 @@ class ToonForgeApp:
 
         # Ensure step frames are visible if doing a preview
         if preview:
-            for f in [self.f_gray, self.f_edge, self.f_smooth, self.f_quant]: f.grid()
+            for f in [self.f_gray, self.f_edge, self.f_smooth, self.f_quant]: 
+                f.grid()
 
         mode_str = "Preview (40% scale)" if preview else "Full Resolution"
         self.notify(f"Starting {mode_str} processing...")
 
-        thread = threading.Thread(target=lambda: self._image_process_thread(preview), daemon=True)
-        thread.start()
+        thread = threading.Thread(
+            target=lambda: self._image_process_thread(preview), 
+            daemon=True
+        ).start()
 
     def _image_process_thread(self, preview):
         try:
-            if preview:
-                # Use resized image for speed
-                self.notify("Running stepped pipeline...")
-                preview_img = self.get_preview_image(scale=0.4)
-                res = self.pipeline.run_on_image(preview_img)
-
-                self.root.after(0, lambda: self._on_processing_done(res, is_preview=True))
-            else:
-                # Full quality
-                self.notify("Running full pipeline...")
-                res = self.pipeline.combine()
-
-                self.root.after(0, lambda: self._on_processing_done(res, is_preview=False))
+            results = self.pipeline_controller.process(preview=preview)
+            self.root.after(
+                0,
+                lambda: self._on_processing_done(results, is_preview=preview)
+            )
         except Exception as e:
             # Capture the error message as a standard string variable
             error_msg = str(e) 
-            self.root.after(0, lambda: self._on_processing_error(error_msg))
+            self.root.after(
+                0,
+                lambda: self._on_processing_error(error_msg)
+            )
 
     def _on_processing_error(self, message):
         self._is_processing = False
@@ -451,10 +474,40 @@ class ToonForgeApp:
     # UI Helpers
     # ---------------------------
 
+    def _require_image(
+        self,
+        message: str | None = None,
+        color: str = "#c0392b",
+    ) -> bool:
+        """
+        Guard helper to ensure an image is loaded before continuing.
+
+        Returns:
+            True if image exists, False otherwise.
+        """
+        pipeline = self.pipeline_manager.pipeline
+
+        if pipeline is None or not pipeline.has_image:
+            self.notify(
+                message or "Please load an image first.",
+                color=color,
+            )
+            return False
+
+        return True
+
     def set_ui_state(self, enabled: bool):
-        # Action buttons
-        self.action_buttons.set_open_enabled(True)   # ALWAYS enabled
+        pm = self.pipeline_manager
+
+        # ---- Action buttons ----
+        self.action_buttons.set_open_enabled(True)
         self.action_buttons.set_processing_enabled(enabled)
 
-        # Options
-        self.options_panel.set_state(enabled)
+        if not pm.supports_preview:
+            self.action_buttons.set_preview_enabled(False)
+
+        # ---- Options ----
+        if pm.supports_options:
+            self.options_panel.set_state(enabled)
+        else:
+            self.options_panel.set_state(False)
