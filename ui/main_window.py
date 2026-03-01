@@ -304,7 +304,7 @@ class ToonForgeApp:
 
     def save_image(self):
         if self.cartoon_image is None:
-            self.notify("Error: Nothing to save.")
+            self.notify("Error: Nothing to save.", color="red")
             return
 
         output_path = get_save_path(self.image_path)
@@ -313,7 +313,7 @@ class ToonForgeApp:
         self.notify(f"Success: Result saved to {os.path.basename(output_path)}")
 
     def on_preset_selected(self, event=None):
-        if not self._require_image("Load an image first to use presets."):
+        if not self._require_image("Load an image first to use presets.", notify = True):
             return
 
         preset_name = self.options_panel.preset_combo.get()
@@ -418,7 +418,13 @@ class ToonForgeApp:
         self.run_processing(preview=False)
 
     def run_processing(self, preview=True):
-        if self._is_processing or not self._require_image():
+        if self._is_processing:
+            return
+        
+        if not self._require_image(
+            "Please load an image first.",
+            notify=True,
+        ):
             return
 
         self._is_processing = True
@@ -482,6 +488,7 @@ class ToonForgeApp:
     def _require_image(
         self,
         message: str | None = None,
+        notify: bool = False,
         color: str = "#c0392b",
     ) -> bool:
         """
@@ -493,10 +500,11 @@ class ToonForgeApp:
         pipeline = self.pipeline_manager.pipeline
 
         if pipeline is None or not pipeline.has_image:
-            self.notify(
-                message or "Please load an image first.",
-                color=color,
-            )
+            if notify:
+                self.notify(
+                    message or "Please load an image first.",
+                    color=color,
+                )
             return False
 
         return True
