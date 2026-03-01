@@ -3,6 +3,7 @@ import numpy as np
 
 from .base_pipeline import BasePipeline
 
+
 class CVPipeline(BasePipeline):
     supports_preview = True
     supports_options = True
@@ -24,9 +25,9 @@ class CVPipeline(BasePipeline):
         self.edge_block = 9
         self.edge_C = 2
 
-        self.smooth_mode = "bilateral" # bilateral, stylization, gaussian, median
-        self.color_mode = "kmeans"     # options: kmeans, posterize, mediancut, octree
-        self.blend_mode = "hard"       # hard, mask, overlay
+        self.smooth_mode = "bilateral"  # bilateral, stylization, gaussian, median
+        self.color_mode = "kmeans"  # options: kmeans, posterize, mediancut, octree
+        self.blend_mode = "hard"  # hard, mask, overlay
         self.use_denoise = False
 
     # ---------------------------
@@ -39,7 +40,7 @@ class CVPipeline(BasePipeline):
     @property
     def has_image(self):
         return self.image is not None
-    
+
     # ---------------------------
     # Base Image Logic (Caching Denoise)
     # ---------------------------
@@ -47,7 +48,7 @@ class CVPipeline(BasePipeline):
         """Returns the denoised image if enabled, otherwise the original."""
         if not self.use_denoise:
             return self.image
-        
+
         if self._denoised is None:
             # Only runs when denoising is toggled ON and cache is empty
             # h=10 is a good balance for removing grain without destroying detail
@@ -57,11 +58,16 @@ class CVPipeline(BasePipeline):
         return self._denoised
 
     def process(self, settings: dict):
-        return self.combine();
+        return self._run()
 
     def preview(self, settings: dict):
-        return self.process_preview(settings["image"])
-    
+        """
+        Run the pipeline on a scaled image without polluting main caches.
+        """
+        image = settings["image"]
+        temp = self._clone_for_image(image)
+        return temp._run()
+
     def set_option(self, name: str, value):
         match name:
             case "denoise":
@@ -110,19 +116,20 @@ class CVPipeline(BasePipeline):
         return self._gray
 
     def compute_edges(self):
-        gray = self.compute_gray() # Uses cached gray
+        gray = self.compute_gray()  # Uses cached gray
 
         if self._edges is None:
             blockSize = max(3, self.edge_block)
-            if blockSize % 2 == 0: blockSize += 1
-          
+            if blockSize % 2 == 0:
+                blockSize += 1
+
             self._edges = cv2.adaptiveThreshold(
                 gray,
                 255,
                 cv2.ADAPTIVE_THRESH_MEAN_C,
                 cv2.THRESH_BINARY,
                 blockSize=blockSize,
-                C=self.edge_C
+                C=self.edge_C,
             )
 
             # Clean up noise from edges - remove salt and pepper
@@ -132,7 +139,7 @@ class CVPipeline(BasePipeline):
 
     def compute_smoothing(self):
         if self._smoothed is None:
-            img = self.get_base_image().copy() # Start from denoised/original base
+            img = self.get_base_image().copy()  # Start from denoised/original base
 
             if self.smooth_mode == "bilateral":
                 for _ in range(self.smooth_passes):
@@ -140,14 +147,14 @@ class CVPipeline(BasePipeline):
                         img,
                         d=9,
                         sigmaColor=50 + self.smooth_passes * 20,
-                        sigmaSpace=50 + self.smooth_passes * 20
+                        sigmaSpace=50 + self.smooth_passes * 20,
                     )
 
             elif self.smooth_mode == "stylization":
                 img = cv2.stylization(
                     img,
                     sigma_s=40 + self.smooth_passes * 5,
-                    sigma_r=0.4 + self.smooth_passes * 0.02
+                    sigma_r=0.4 + self.smooth_passes * 0.02,
                 )
 
             elif self.smooth_mode == "gaussian":
@@ -174,18 +181,13 @@ class CVPipeline(BasePipeline):
 
         criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 10, 0.1)
         _, _, centers = cv2.kmeans(
-            data, 
-            self.num_colors, 
-            None, 
-            criteria, 
-            5, 
-            cv2.KMEANS_RANDOM_CENTERS
+            data, self.num_colors, None, criteria, 5, cv2.KMEANS_RANDOM_CENTERS
         )
-        
+
         # Apply clusters to the original full-size image
         centers = np.uint8(centers)
         full_data = np.float32(img).reshape((-1, 3))
-        
+
         # Efficiently map every pixel to the nearest center
         distances = np.linalg.norm(full_data[:, np.newaxis] - centers, axis=2)
         labels = np.argmin(distances, axis=1)
@@ -194,7 +196,7 @@ class CVPipeline(BasePipeline):
 
     def quantize_posterize(self, img):
         # Approximate total colors using per-channel levels
-        levels = int(round(self.num_colors ** (1/3)))
+        levels = int(round(self.num_colors ** (1 / 3)))
         levels = max(2, min(16, levels))
 
         factor = 256 // levels
@@ -222,11 +224,10 @@ class CVPipeline(BasePipeline):
             None,
             (cv2.TERM_CRITERIA_EPS, 5, 1.0),
             1,
-            cv2.KMEANS_PP_CENTERS
+            cv2.KMEANS_PP_CENTERS,
         )
         centers = np.uint8(centers)
         return centers[labels.flatten()].reshape(img.shape)
-
 
     def boost_vibrancy(self, img, saturation=1.5, brightness=1.1):
         # Convert to HSV to boost color without messing up the shadows
@@ -235,7 +236,6 @@ class CVPipeline(BasePipeline):
         hsv[:, :, 2] *= brightness  # Value/Brightness
         hsv[:, :, 1:] = np.clip(hsv[:, :, 1:], 0, 255)
         return cv2.cvtColor(hsv.astype("uint8"), cv2.COLOR_HSV2BGR)
-
 
     # ---------------------------
     # Quantization Dispatcher
@@ -265,62 +265,68 @@ class CVPipeline(BasePipeline):
     def compute_pencil_sketch(self):
         """Creates a professional pencil sketch look using division blending."""
         gray = self._get_raw_gray()
-        
+
         # Invert the gray image
         inverted = 255 - gray
-        
+
         # Blur the inverted image significantly
         # Use edge_block to determine blur intensity!
-        k_size = max(3, self.edge_block * 2 + 1) 
+        k_size = max(3, self.edge_block * 2 + 1)
         blurred = cv2.GaussianBlur(inverted, (k_size, k_size), 0)
-        
+
         # Mix the gray and blurred-inverted using a 'Divide' blend
         sketch = cv2.divide(gray, 255 - blurred, scale=256)
 
         # Convert back to BGR so it fits the rest of the pipeline
         return cv2.cvtColor(sketch, cv2.COLOR_GRAY2BGR)
 
-    def combine(self):
+    def _run(self):
         # Check if we are in Pencil Sketch mode (triggered by specific blend/color combo)
         if self.color_mode == "sketch":
             sketch = self.compute_pencil_sketch()
             # Return same structure so UI doesn't crash
-            return sketch, self._get_raw_gray(), sketch, sketch, sketch
+            # return sketch, self._get_raw_gray(), sketch, sketch, sketch
+            return {
+                "final": sketch,
+                "steps": {
+                    "gray": self._get_raw_gray(),
+                    "sketch": sketch,
+                },
+            }
 
         gray = self.compute_gray()
         edges = self.compute_edges()
         quantized = self.compute_quantization()
-        
+
         # Boost vibrancy of colors BEFORE blending with black edges
         quantized = self.boost_vibrancy(quantized)
 
         edges_colored = cv2.cvtColor(edges, cv2.COLOR_GRAY2BGR)
 
         if self.blend_mode == "hard":
-            cartoon = cv2.bitwise_and(quantized, edges_colored)
-
+            final = cv2.bitwise_and(quantized, edges_colored)
         elif self.blend_mode == "mask":
             # Mask: ensure edges are crisp black
             mask = cv2.threshold(edges, 128, 255, cv2.THRESH_BINARY)[1]
-            cartoon = cv2.bitwise_and(quantized, quantized, mask=mask)
-
+            final = cv2.bitwise_and(quantized, quantized, mask=mask)
         elif self.blend_mode == "overlay":
             # Use a "Multiply" style blend for a comic book feel
             # This keeps the colors bright but layers the lines on top
-            cartoon = cv2.addWeighted(quantized, 1.0, edges_colored, 0.2, -50)
-
+            final = cv2.addWeighted(quantized, 1.0, edges_colored, 0.2, -50)
         else:
             raise ValueError(f"Unknown blend mode: {self.blend_mode}")
 
-        return cartoon, gray, edges_colored, self._smoothed, self._quantized
-
-    def process_preview(self, image):
-        """
-        Run the pipeline on a scaled image without polluting main caches.
-        """
-        temp = self._clone_for_image(image)
-        return temp.combine()
+        return {
+            "final": final,
+            "steps": {
+                "gray": gray,
+                "edges": edges_colored,
+                "smoothed": self._smoothed,
+                "quantized": self._quantized,
+            },
+        }
     
+
     def _clone_for_image(self, image):
         clone = self.__class__()
         clone.set_image(image)
@@ -342,7 +348,7 @@ class CVPipeline(BasePipeline):
     # ---------------------------
     def invalidate_denoise(self):
         self._denoised = None
-        self.invalidate_all() # Everything depends on the base image
+        self.invalidate_all()  # Everything depends on the base image
 
     def invalidate_gray(self):
         self._gray = None

@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 
+
 class BasePipeline(ABC):
     """
     Abstract pipeline interface.
@@ -18,27 +19,33 @@ class BasePipeline(ABC):
     def set_image(self, image):
         self.image = image
 
+    @property
+    def has_image(self):
+        return self.image is not None
+
     # ---- Processing API ----
     @abstractmethod
     def process(self, settings: dict):
-        """Run full processing and return final image"""
+        """
+        Full processing.
+        Must return:
+        {
+            "final": image,
+            "steps": dict[str, image]   # optional
+        }
+        """
         pass
 
     def preview(self, settings: dict):
         """
         Optional preview.
         Pipelines that support preview override this.
+        Same return format as process().
         """
         raise NotImplementedError("Preview not supported by this pipeline")
-    
+
     def set_option(self, name: str, value):
-        raise NotImplementedError(
-            f"{type(self).__name__} does not support options"
-        )
-    
-    @property
-    def has_image(self):
-        return self.image is not None
+        raise NotImplementedError(f"{type(self).__name__} does not support options")
 
     def get_preview_image(self, scale=0.4):
         """
@@ -49,10 +56,8 @@ class BasePipeline(ABC):
             return None
 
         import cv2
+
         h, w = self.image.shape[:2]
         return cv2.resize(
-            self.image,
-            (int(w * scale), int(h * scale)),
-            interpolation=cv2.INTER_AREA
+            self.image, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA
         )
-    

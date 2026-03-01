@@ -24,7 +24,7 @@ class ToonForgeApp:
         "Bilateral": "bilateral",
         "Stylization": "stylization",
         "Gaussian Blur": "gaussian",
-        "Median Filter": "median"
+        "Median Filter": "median",
     }
 
     COLOR_MODES = {
@@ -32,50 +32,63 @@ class ToonForgeApp:
         "Posterize": "posterize",
         "Median Cut": "mediancut",
         "Octree": "octree",
-        "Sketch": "sketch"
+        "Sketch": "sketch",
     }
 
-    BLEND_MODES = {
-        "Hard": "hard",
-        "Mask": "mask",
-        "Overlay": "overlay"
-    }
+    BLEND_MODES = {"Hard": "hard", "Mask": "mask", "Overlay": "overlay"}
 
     PRESETS = {
         "Custom": {},
-
         "Classic Cartoon": {
-            "smooth_mode": "bilateral", "smooth_val": 5,
-            "color_mode": "kmeans", "color_val": 12,
-            "blend_mode": "hard", "edge_val": 6,
-            "denoise": True
+            "smooth_mode": "bilateral",
+            "smooth_val": 5,
+            "color_mode": "kmeans",
+            "color_val": 12,
+            "blend_mode": "hard",
+            "edge_val": 6,
+            "denoise": True,
         },
         "Vibrant Comic": {
-            "smooth_mode": "stylization", "smooth_val": 4,
-            "color_mode": "kmeans", "color_val": 8,
-            "blend_mode": "mask", "edge_val": 11
+            "smooth_mode": "stylization",
+            "smooth_val": 4,
+            "color_mode": "kmeans",
+            "color_val": 8,
+            "blend_mode": "mask",
+            "edge_val": 11,
         },
         "Ink Sketch": {
-            "smooth_mode": "gaussian", "smooth_val": 10,
-            "color_mode": "posterize", "color_val": 3,
-            "blend_mode": "hard", "edge_val": 15,
-            "denoise": True
+            "smooth_mode": "gaussian",
+            "smooth_val": 10,
+            "color_mode": "posterize",
+            "color_val": 3,
+            "blend_mode": "hard",
+            "edge_val": 15,
+            "denoise": True,
         },
         "Pencil Sketch": {
-            "smooth_mode": "gaussian", "smooth_val": 1,
-            "color_mode": "sketch", "color_val": 6,
-            "blend_mode": "hard", "edge_val": 3
+            "smooth_mode": "gaussian",
+            "smooth_val": 1,
+            "color_mode": "sketch",
+            "color_val": 6,
+            "blend_mode": "hard",
+            "edge_val": 3,
         },
         "High-Contrast Sketch": {
-            "smooth_mode": "gaussian", "smooth_val": 3,
-            "color_mode": "posterize", "color_val": 2, # Black & White feel
-            "blend_mode": "hard", "edge_val": 15
+            "smooth_mode": "gaussian",
+            "smooth_val": 3,
+            "color_mode": "posterize",
+            "color_val": 2,  # Black & White feel
+            "blend_mode": "hard",
+            "edge_val": 15,
         },
         "Soft Watercolor": {
-            "smooth_mode": "stylization", "smooth_val": 7,
-            "color_mode": "mediancut", "color_val": 24,
-            "blend_mode": "overlay", "edge_val": 3
-        }
+            "smooth_mode": "stylization",
+            "smooth_val": 7,
+            "color_mode": "mediancut",
+            "color_val": 24,
+            "blend_mode": "overlay",
+            "edge_val": 3,
+        },
     }
 
     def __init__(self, root):
@@ -100,7 +113,7 @@ class ToonForgeApp:
         # Disable controls until image is loaded
         self.set_ui_state(False)
         self.notify("ToonForge initialized. Awaiting image input.")
-    
+
     # ---------------------------
     # UI Construction
     # ---------------------------
@@ -120,7 +133,7 @@ class ToonForgeApp:
         # Right Panel (Results)
         self.right_panel = Frame(self.main_container, bg=THEME["bg_main"], padx=10)
         self.right_panel.grid(row=0, column=1, sticky="nsew")
-    
+
     def _create_widgets(self):
         """Orchestrates widget creation."""
         self._create_header()
@@ -136,7 +149,9 @@ class ToonForgeApp:
 
         # ---- Action Buttons ----
         self.action_buttons.set_preview_visible(pm.supports_preview)
-        self.action_buttons.set_cartoon_enabled(True)  # Always allowed once image exists
+        self.action_buttons.set_cartoon_enabled(
+            True
+        )  # Always allowed once image exists
 
         # ---- Options Panel ----
         if pm.supports_options:
@@ -157,12 +172,15 @@ class ToonForgeApp:
 
     def _create_action_buttons(self):
         """Action buttons: Open, Preview, Cartoonify, Save"""
-        self.action_buttons = ActionButtons(self.left_panel, callbacks={
-            "open": self.open_image,
-            "preview": self.preview_image,
-            "cartoon": self.apply_cartoon,
-            "save": self.save_image
-        })
+        self.action_buttons = ActionButtons(
+            self.left_panel,
+            callbacks={
+                "open": self.open_image,
+                "preview": self.preview_image,
+                "cartoon": self.apply_cartoon,
+                "save": self.save_image,
+            },
+        )
         self.action_buttons.pack(fill="x", pady=5)
 
     def _create_options_panel(self):
@@ -181,31 +199,50 @@ class ToonForgeApp:
                 "color_val": self.on_color_depth_changed,
                 "blend_mode": self.on_blend_mode_selected,
                 "edge_val": self.on_edge_strength_changed,
-                "denoise": self.on_denoise_toggled
-            }
+                "denoise": self.on_denoise_toggled,
+            },
         )
         self.options_panel.pack(fill="x")
 
     def _create_log_console(self):
         """Activity log console."""
-        Label(self.left_panel, text="Activity Log", font=(THEME["font_family"], 9, "bold"), bg=THEME["bg_main"]).pack(anchor="w")
-        self.log_console = tk.Text(self.left_panel, height=6, font=(THEME["font_mono"], 9), bg=THEME["bg_console"], fg=THEME["fg_console"], state="disabled")
+        Label(
+            self.left_panel,
+            text="Activity Log",
+            font=(THEME["font_family"], 9, "bold"),
+            bg=THEME["bg_main"],
+        ).pack(anchor="w")
+        self.log_console = tk.Text(
+            self.left_panel,
+            height=6,
+            font=(THEME["font_mono"], 9),
+            bg=THEME["bg_console"],
+            fg=THEME["fg_console"],
+            state="disabled",
+        )
         self.log_console.pack(fill="x", pady=5)
 
     def _create_original_preview(self):
         """Original image preview area."""
-        Label(self.left_panel, text="Original Image", font=(THEME["font_family"], 9, "bold"), bg=THEME["bg_main"]).pack(pady=(10, 5), anchor="w")
-        self.original_label = Label(self.left_panel, text="No image loaded", bg="#ddd", height=10)
+        Label(
+            self.left_panel,
+            text="Original Image",
+            font=(THEME["font_family"], 9, "bold"),
+            bg=THEME["bg_main"],
+        ).pack(pady=(10, 5), anchor="w")
+        self.original_label = Label(
+            self.left_panel, text="No image loaded", bg="#ddd", height=10
+        )
         self.original_label.pack(fill="both", expand=True, pady=10)
 
     def _create_status_bar(self):
         """Status bar at the bottom of the left panel."""
         self.progress = ttk.Progressbar(self.left_panel, mode="indeterminate")
         self.status_label = Label(
-            self.left_panel, 
-            text="Ready", 
-            font=(THEME["font_family"], 9), 
-            bg=THEME["bg_main"], 
+            self.left_panel,
+            text="Ready",
+            font=(THEME["font_family"], 9),
+            bg=THEME["bg_main"],
             fg=THEME["text_dim"],
             # wraplength=350,
             # justify="left"
@@ -234,14 +271,14 @@ class ToonForgeApp:
 
         self.log_console.see("end")
         self.log_console.config(state="disabled")
-        
+
         if is_status:
             self.status_label.config(text=message)
 
     def open_image(self):
         file_path = filedialog.askopenfilename(
             title="Select an image",
-            filetypes=[("Image Files", "*.jpg *.jpeg *.png *.webp")]
+            filetypes=[("Image Files", "*.jpg *.jpeg *.png *.webp")],
         )
         if not file_path:
             return
@@ -253,11 +290,13 @@ class ToonForgeApp:
         self.cartoon_image = None
 
         # Clear preview slots
-        self.step_previews.clear();
+        self.step_previews.clear()
 
         display_image(img, self.original_label, (400, 300))
 
-        self.notify(f"Image loaded: {os.path.basename(file_path)} ({img.shape[1]}x{img.shape[0]})")
+        self.notify(
+            f"Image loaded: {os.path.basename(file_path)} ({img.shape[1]}x{img.shape[0]})"
+        )
 
         self._sync_ui_with_pipeline()
         self.set_ui_state(True)
@@ -276,7 +315,7 @@ class ToonForgeApp:
     def on_preset_selected(self, event=None):
         if not self._require_image("Load an image first to use presets."):
             return
-        
+
         preset_name = self.options_panel.preset_combo.get()
         if preset_name == "Custom":
             return
@@ -287,20 +326,17 @@ class ToonForgeApp:
         self.options_panel.load_preset(settings)
 
         self.root.after(
-            200,
-            lambda: self.notify(f"Preset '{preset_name}' ready!", color="#4a90e2")
+            200, lambda: self.notify(f"Preset '{preset_name}' ready!", color="#4a90e2")
         )
 
     def on_denoise_toggled(self):
         if not self._require_image():
             return
-        
+
         value = self.options_panel.denoise_var.get()
         self.pipeline_controller.set_option("denoise", value)
 
-        self.notify(
-            f"Denoising set to {value}. Re-process to see effect."
-        )
+        self.notify(f"Denoising set to {value}. Re-process to see effect.")
 
     # ---------------------------
     # Slider Callbacks (Selective Recompute)
@@ -308,40 +344,40 @@ class ToonForgeApp:
     def on_smoothing_mode_selected(self, _=None):
         if not self._require_image():
             return
-        
-        selected = self.options_panel.smooth_mode.get()
-        self.pipeline_controller.set_option(
-            "smooth_mode",
-            self.SMOOTH_MODES[selected]
-        )
 
-        self.notify(f"Smoothing algorithm changed to {selected}. Click Preview/Cartoonify to update.")
+        selected = self.options_panel.smooth_mode.get()
+        self.pipeline_controller.set_option("smooth_mode", self.SMOOTH_MODES[selected])
+
+        self.notify(
+            f"Smoothing algorithm changed to {selected}. Click Preview/Cartoonify to update."
+        )
 
     def on_smoothing_strength_changed(self, _=None):
         if not self._require_image():
             return
-        
+
         value = self.options_panel.smooth_slider.get()
         self.pipeline_controller.set_option("smooth_passes", value)
 
-        self.notify(f"Smoothing algorithm set to {value}. Click Preview/Cartoonify to update.")
+        self.notify(
+            f"Smoothing algorithm set to {value}. Click Preview/Cartoonify to update."
+        )
 
     def on_color_mode_selected(self, event=None):
         if not self._require_image():
             return
 
         selected = self.options_panel.color_mode.get()
-        self.pipeline_controller.set_option(
-            "color_mode",
-            self.COLOR_MODES[selected]
-        )
+        self.pipeline_controller.set_option("color_mode", self.COLOR_MODES[selected])
 
-        self.notify(f"Color algorithm changed to {selected}. Click Preview/Cartoonify to update.")
+        self.notify(
+            f"Color algorithm changed to {selected}. Click Preview/Cartoonify to update."
+        )
 
     def on_color_depth_changed(self, _=None):
         if not self._require_image():
             return
-        
+
         value = self.options_panel.color_slider.get()
         self.pipeline_controller.set_option("num_colors", value)
 
@@ -352,36 +388,39 @@ class ToonForgeApp:
             return
 
         selected = self.options_panel.blend_mode.get()
-        self.pipeline_controller.set_option(
-            "blend_mode",
-            self.BLEND_MODES[selected]
-        )
+        self.pipeline_controller.set_option("blend_mode", self.BLEND_MODES[selected])
 
-        self.notify(f"Blend Mode changed to {selected}. Click Preview/Cartoonify to update.")
+        self.notify(
+            f"Blend Mode changed to {selected}. Click Preview/Cartoonify to update."
+        )
 
     def on_edge_strength_changed(self, _=None):
         if not self._require_image():
             return
-        
+
         value = self.options_panel.edge_slider.get()
         if value % 2 == 0:
             value += 1
-        
+
         self.pipeline_controller.set_option("edge_block", value)
 
-        self.notify(f"Edge Strength set to {value}. Click Preview/Cartoonify to update.")
+        self.notify(
+            f"Edge Strength set to {value}. Click Preview/Cartoonify to update."
+        )
 
     # ---------------------------
     # Processing
     # ---------------------------
-    def preview_image(self): self.run_processing(preview=True)
+    def preview_image(self):
+        self.run_processing(preview=True)
 
-    def apply_cartoon(self): self.run_processing(preview=False)
+    def apply_cartoon(self):
+        self.run_processing(preview=False)
 
     def run_processing(self, preview=True):
         if self._is_processing or not self._require_image():
             return
-        
+
         self._is_processing = True
         self.progress.pack(fill="x", pady=2)
         self.progress.start()
@@ -395,31 +434,19 @@ class ToonForgeApp:
         self.notify(f"Starting {mode_str} processing...")
 
         thread = threading.Thread(
-            target=lambda: self._image_process_thread(preview), 
-            daemon=True
+            target=lambda: self._image_process_thread(preview), daemon=True
         ).start()
 
     def _image_process_thread(self, preview):
         try:
             results = self.pipeline_controller.process(preview=preview)
             self.root.after(
-                0,
-                lambda: self._on_processing_done(results, is_preview=preview)
+                0, lambda: self._on_processing_done(results, is_preview=preview)
             )
         except Exception as e:
             # Capture the error message as a standard string variable
-            error_msg = str(e) 
-            self.root.after(
-                0,
-                lambda: self._on_processing_error(error_msg)
-            )
-
-    def _on_processing_error(self, message):
-        self._is_processing = False
-        self.progress.stop()
-        self.progress.pack_forget()
-        self.set_ui_state(True)
-        self.notify(f"ERROR: {message}", color="red")
+            error_msg = str(e)
+            self.root.after(0, lambda: self._on_processing_error(error_msg))
 
     def _on_processing_done(self, results, is_preview):
         self._is_processing = False
@@ -427,24 +454,26 @@ class ToonForgeApp:
         self.progress.pack_forget()
         self.set_ui_state(True)
 
-        cartoon, gray, edges, smoothed, quantized = results
-        self.cartoon_image = cartoon
+        final = results["final"]
+        steps = results["steps"]
+        self.cartoon_image = final
 
-        if is_preview:
+        if is_preview and steps:
             self.step_previews.show_steps(True)
-            self.step_previews.update_preview(
-                gray=gray,
-                edge=edges,
-                smooth=smoothed,
-                quant=quantized,
-                final=cartoon
-            )
+            self.step_previews.update_from_steps(steps, final)
             self.notify("Success: Preview generated. Showing intermediate steps.")
         else:
             # Hide steps on full apply to focus on final
             self.step_previews.show_steps(False)
-            self.step_previews.update_final_only(cartoon)
+            self.step_previews.update_final_only(final)
             self.notify("Success: Full Cartoonified image ready.")
+
+    def _on_processing_error(self, message):
+        self._is_processing = False
+        self.progress.stop()
+        self.progress.pack_forget()
+        self.set_ui_state(True)
+        self.notify(f"ERROR: {message}", color="red")
 
     # ---------------------------
     # UI Helpers

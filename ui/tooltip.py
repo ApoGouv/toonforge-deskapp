@@ -1,5 +1,6 @@
 import tkinter as tk
 
+
 class ToolTip:
     def __init__(self, widget, text, position="bottom", top_offset=25):
         """
@@ -14,13 +15,13 @@ class ToolTip:
         self.top_offset = top_offset
         self.tip_window = None
 
-        widget.bind("<Enter>", self.show_tip)
-        widget.bind("<Leave>", self.hide_tip)
+        self._enter_binding = widget.bind("<Enter>", self.show_tip)
+        self._leave_binding = widget.bind("<Leave>", self.hide_tip)
 
     def show_tip(self, event=None):
         if self.tip_window or not self.text:
             return
-        
+
         self.tip_window = tw = tk.Toplevel(self.widget)
         tw.wm_overrideredirect(True)
 
@@ -30,7 +31,7 @@ class ToolTip:
             background="#ffffe0",
             relief="solid",
             borderwidth=1,
-            font=("Segoe UI", 9)
+            font=("Segoe UI", 9),
         )
         label.pack(ipadx=6, ipady=4)
 
@@ -39,17 +40,9 @@ class ToolTip:
         # Default x/y positions
         x = self.widget.winfo_rootx() + 20
         if self.position == "top":
-            y = (
-                self.widget.winfo_rooty()
-                - tw.winfo_height()
-                - self.top_offset
-            )
+            y = self.widget.winfo_rooty() - tw.winfo_height() - self.top_offset
         else:
-            y = (
-                self.widget.winfo_rooty()
-                + self.widget.winfo_height()
-                + 5
-            )
+            y = self.widget.winfo_rooty() + self.widget.winfo_height() + 5
 
         tw.wm_geometry(f"+{x}+{y}")
 
@@ -57,3 +50,19 @@ class ToolTip:
         if self.tip_window:
             self.tip_window.destroy()
             self.tip_window = None
+
+    def destroy(self):
+        """
+        Fully remove tooltip: window + event bindings.
+        Safe to call multiple times.
+        """
+        self.hide_tip()
+
+        if self.widget:
+            try:
+                self.widget.unbind("<Enter>")
+                self.widget.unbind("<Leave>")
+            except Exception:
+                pass
+
+        self.widget = None

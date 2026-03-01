@@ -1,4 +1,3 @@
-from typing import Optional
 from .base_pipeline import BasePipeline
 from .cv_pipeline import CVPipeline
 
