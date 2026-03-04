@@ -1,13 +1,86 @@
 import cv2
 import numpy as np
 
-from .base_pipeline import BasePipeline
+from pipelines.base_pipeline import BasePipeline
+from pipelines.pipeline_step import PipelineStep
+from ui.panels.options.cv_options_panel import CVOptionsPanel
 
 
 class CVPipeline(BasePipeline):
     supports_preview = True
     supports_options = True
     supports_presets = True
+
+    _SMOOTH_MODES = {
+        "Bilateral": "bilateral",
+        "Stylization": "stylization",
+        "Gaussian Blur": "gaussian",
+        "Median Filter": "median",
+    }
+
+    _COLOR_MODES = {
+        "K-Means": "kmeans",
+        "Posterize": "posterize",
+        "Median Cut": "mediancut",
+        "Octree": "octree",
+        "Sketch": "sketch",
+    }
+
+    _BLEND_MODES = {"Hard": "hard", "Mask": "mask", "Overlay": "overlay"}
+
+    _PRESETS = {
+        "Custom": {},
+        "Classic Cartoon": {
+            "smooth_mode": "bilateral",
+            "smooth_val": 5,
+            "color_mode": "kmeans",
+            "color_val": 12,
+            "blend_mode": "hard",
+            "edge_val": 6,
+            "denoise": True,
+        },
+        "Vibrant Comic": {
+            "smooth_mode": "stylization",
+            "smooth_val": 4,
+            "color_mode": "kmeans",
+            "color_val": 8,
+            "blend_mode": "mask",
+            "edge_val": 11,
+        },
+        "Ink Sketch": {
+            "smooth_mode": "gaussian",
+            "smooth_val": 10,
+            "color_mode": "posterize",
+            "color_val": 3,
+            "blend_mode": "hard",
+            "edge_val": 15,
+            "denoise": True,
+        },
+        "Pencil Sketch": {
+            "smooth_mode": "gaussian",
+            "smooth_val": 1,
+            "color_mode": "sketch",
+            "color_val": 6,
+            "blend_mode": "hard",
+            "edge_val": 3,
+        },
+        "High-Contrast Sketch": {
+            "smooth_mode": "gaussian",
+            "smooth_val": 3,
+            "color_mode": "posterize",
+            "color_val": 2,  # Black & White feel
+            "blend_mode": "hard",
+            "edge_val": 15,
+        },
+        "Soft Watercolor": {
+            "smooth_mode": "stylization",
+            "smooth_val": 7,
+            "color_mode": "mediancut",
+            "color_val": 24,
+            "blend_mode": "overlay",
+            "edge_val": 3,
+        },
+    }
 
     def __init__(self):
         super().__init__()
@@ -29,6 +102,12 @@ class CVPipeline(BasePipeline):
         self.color_mode = "kmeans"  # options: kmeans, posterize, mediancut, octree
         self.blend_mode = "hard"  # hard, mask, overlay
         self.use_denoise = False
+
+        # ---- For options panel ----
+        self.presets = self._PRESETS
+        self.smooth_modes = self._SMOOTH_MODES
+        self.color_modes = self._COLOR_MODES
+        self.blend_modes = self._BLEND_MODES
 
     # ---------------------------
     # Image lifecycle
@@ -56,6 +135,13 @@ class CVPipeline(BasePipeline):
                 self.image, None, 10, 10, 7, 21
             )
         return self._denoised
+    
+    # ---------- Options UI ----------
+
+    def create_options_panel(self, parent):
+        return CVOptionsPanel(parent, self)
+    
+    # ---------- Processing ----------
 
     def process(self, settings: dict):
         return self._run()
@@ -284,14 +370,14 @@ class CVPipeline(BasePipeline):
         # Check if we are in Pencil Sketch mode (triggered by specific blend/color combo)
         if self.color_mode == "sketch":
             sketch = self.compute_pencil_sketch()
-            # Return same structure so UI doesn't crash
-            # return sketch, self._get_raw_gray(), sketch, sketch, sketch
+            steps = [
+                PipelineStep("gray", "Grayscale", self._get_raw_gray(), "Convert image to grayscale for edge detection."),
+                PipelineStep("sketch", "Pencil Sketch", sketch, "Generate a pencil sketch rendering."),
+            ]
+
             return {
                 "final": sketch,
-                "steps": {
-                    "gray": self._get_raw_gray(),
-                    "sketch": sketch,
-                },
+                "steps": steps
             }
 
         gray = self.compute_gray()
@@ -316,14 +402,16 @@ class CVPipeline(BasePipeline):
         else:
             raise ValueError(f"Unknown blend mode: {self.blend_mode}")
 
+        steps = [
+            PipelineStep("gray", "Grayscale", gray, "Convert image to grayscale for edge detection."),
+            PipelineStep("edges", "Edges", edges_colored, "Detect edges using adaptive thresholding."),
+            PipelineStep("smoothed", "Smoothing", self._smoothed, "Smooth colors while preserving boundaries."),
+            PipelineStep("quantized", "Color Quantization", self._quantized, "Reduce color palette for cartoon effect."),
+        ]
+
         return {
             "final": final,
-            "steps": {
-                "gray": gray,
-                "edges": edges_colored,
-                "smoothed": self._smoothed,
-                "quantized": self._quantized,
-            },
+            "steps": steps
         }
     
 

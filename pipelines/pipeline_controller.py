@@ -15,16 +15,6 @@ class PipelineController:
     def pipeline(self):
         return self.manager.pipeline
 
-    # ---------------------------
-    # Generic option setter
-    # ---------------------------
-    def set_option(self, name: str, value):
-        pipeline = self.pipeline
-        if pipeline is None:
-            return
-
-        pipeline.set_option(name, value)
-
     def get_preview_image(self, scale=0.4):
         pipeline = self.pipeline
         if not pipeline or not pipeline.has_image:
@@ -47,14 +37,18 @@ class PipelineController:
             result = pipeline.process({})
 
         final = result["final"]
-        raw_steps = result.get("steps", {})
+        steps = result.get("steps", [])
 
-        steps = self._normalize_steps(pipeline, raw_steps)
+        # Enforce contract
+        for step in steps:
+            if not isinstance(step, PipelineStep):
+                raise TypeError(
+                    f"Expected PipelineStep, got {type(step).__name__}"
+                )
 
         # Enforce contract
         return {"final": final, "steps": steps}
 
-    def _normalize_steps(self, pipeline, raw_steps: dict):
         steps = []
 
         # CVPipeline-specific mapping (kept OUT of the UI)

@@ -1,5 +1,6 @@
-from .base_pipeline import BasePipeline
-from .cv_pipeline import CVPipeline
+from pipelines.base_pipeline import BasePipeline
+from pipelines.cv.cv_pipeline import CVPipeline
+from pipelines.ai.animegan_pipeline import AnimeGANPipeline
 
 
 class PipelineManager:
@@ -8,16 +9,26 @@ class PipelineManager:
     """
 
     def __init__(self):
-        # Default pipeline (current behavior)
-        self._pipeline: BasePipeline = CVPipeline()
+
+        self.pipelines = {
+            "cv": CVPipeline,
+            "animegan": AnimeGANPipeline,
+        }
+
+        self._pipeline_key = "cv"
+        self._pipeline: BasePipeline = self.pipelines[self._pipeline_key]()
 
     # ---- Pipeline access ----
     @property
     def pipeline(self) -> BasePipeline:
         return self._pipeline
 
-    def set_pipeline(self, pipeline: BasePipeline):
-        self._pipeline = pipeline
+    def set_pipeline(self, key: str):
+        if key not in self.pipelines:
+            raise ValueError(f"Unknown pipeline: {key}")
+
+        self._pipeline_key = key
+        self._pipeline: BasePipeline = self.pipelines[key]()
 
     # ---- Capability proxies ----
     @property

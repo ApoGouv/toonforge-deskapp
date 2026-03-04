@@ -11,7 +11,6 @@ from pipelines.pipeline_controller import PipelineController
 from ui.image_utils import display_image
 from ui.panels.action_buttons import ActionButtons
 from ui.panels.header_panel import HeaderPanel
-from ui.panels.options_panel import OptionsPanel
 from ui.panels.step_previews_panel import StepPreviewsPanel
 from ui.theme import THEME
 from ui.tooltip import ToolTip
@@ -20,77 +19,6 @@ from utils.fs_utils import get_save_path
 
 class ToonForgeApp:
 
-    SMOOTH_MODES = {
-        "Bilateral": "bilateral",
-        "Stylization": "stylization",
-        "Gaussian Blur": "gaussian",
-        "Median Filter": "median",
-    }
-
-    COLOR_MODES = {
-        "K-Means": "kmeans",
-        "Posterize": "posterize",
-        "Median Cut": "mediancut",
-        "Octree": "octree",
-        "Sketch": "sketch",
-    }
-
-    BLEND_MODES = {"Hard": "hard", "Mask": "mask", "Overlay": "overlay"}
-
-    PRESETS = {
-        "Custom": {},
-        "Classic Cartoon": {
-            "smooth_mode": "bilateral",
-            "smooth_val": 5,
-            "color_mode": "kmeans",
-            "color_val": 12,
-            "blend_mode": "hard",
-            "edge_val": 6,
-            "denoise": True,
-        },
-        "Vibrant Comic": {
-            "smooth_mode": "stylization",
-            "smooth_val": 4,
-            "color_mode": "kmeans",
-            "color_val": 8,
-            "blend_mode": "mask",
-            "edge_val": 11,
-        },
-        "Ink Sketch": {
-            "smooth_mode": "gaussian",
-            "smooth_val": 10,
-            "color_mode": "posterize",
-            "color_val": 3,
-            "blend_mode": "hard",
-            "edge_val": 15,
-            "denoise": True,
-        },
-        "Pencil Sketch": {
-            "smooth_mode": "gaussian",
-            "smooth_val": 1,
-            "color_mode": "sketch",
-            "color_val": 6,
-            "blend_mode": "hard",
-            "edge_val": 3,
-        },
-        "High-Contrast Sketch": {
-            "smooth_mode": "gaussian",
-            "smooth_val": 3,
-            "color_mode": "posterize",
-            "color_val": 2,  # Black & White feel
-            "blend_mode": "hard",
-            "edge_val": 15,
-        },
-        "Soft Watercolor": {
-            "smooth_mode": "stylization",
-            "smooth_val": 7,
-            "color_mode": "mediancut",
-            "color_val": 24,
-            "blend_mode": "overlay",
-            "edge_val": 3,
-        },
-    }
-
     def __init__(self, root):
         self.root = root
         self.root.title("ToonForge – Cartoonify Images")
@@ -98,14 +26,30 @@ class ToonForgeApp:
         self.root.minsize(1200, 800)
         self.root.configure(bg=THEME["bg_main"])
 
+        # --------------------------------
+        # Core architecture
+        # --------------------------------
         self.pipeline_manager = PipelineManager()
         self.pipeline_controller = PipelineController(self.pipeline_manager)
 
+        # Set default pipeline cv or animegan
+        self.pipeline_manager.set_pipeline("cv")
+
+        # --------------------------------
         # State
+        # --------------------------------
         self.cartoon_image = None
         self.image_path = None
         self._is_processing = False
 
+        # --------------------------------
+        # Options panel placeholder
+        # --------------------------------
+        self.options_panel = None
+
+        # --------------------------------
+        # Layout
+        # --------------------------------
         self._setup_layout()
         self._create_widgets()
         self._sync_ui_with_pipeline()
@@ -138,11 +82,16 @@ class ToonForgeApp:
         """Orchestrates widget creation."""
         self._create_header()
         self._create_action_buttons()
-        self._create_options_panel()
-        self._create_log_console()
+        self._create_pipeline_selector()
         self._create_original_preview()
+
+        self.options_container = Frame(self.left_panel, bg=THEME["bg_main"])
+        self.options_container.pack(fill="x", pady=5)
+        self._create_options_panel()
+
+        self._create_log_console()
+        self._create_progress_indicator()
         self._create_step_previews()
-        self._create_status_bar()
 
     def _sync_ui_with_pipeline(self):
         pm = self.pipeline_manager
@@ -153,17 +102,32 @@ class ToonForgeApp:
             True
         )  # Always allowed once image exists
 
-        # ---- Options Panel ----
-        if pm.supports_options:
-            self.options_panel.pack(fill="x")
-        else:
-            self.options_panel.pack_forget()
-
-        # ---- Presets ----
-        self.options_panel.set_presets_enabled(pm.supports_presets)
+        # ---- Refresh Options Panel ----
+        self._create_options_panel()
 
         # ---- Step Previews ----
         self.step_previews.show_steps(pm.supports_preview)
+
+    def _create_pipeline_selector(self):
+        Label(
+            self.left_panel,
+            text="Pipeline",
+            font=(THEME["font_family"], 9, "bold"),
+            bg=THEME["bg_main"],
+        ).pack(anchor="w", pady=(10, 2))
+
+        self.pipeline_combo = ttk.Combobox(
+            self.left_panel,
+            state="readonly",
+            values=[
+                "Classic (CV)",
+                "Anime (AI)",
+            ],
+        )
+        self.pipeline_combo.current(0)
+        self.pipeline_combo.pack(fill="x")
+
+        self.pipeline_combo.bind("<<ComboboxSelected>>", self.on_pipeline_changed)
 
     def _create_header(self):
         """App header title and subtitle."""
@@ -184,25 +148,18 @@ class ToonForgeApp:
         self.action_buttons.pack(fill="x", pady=5)
 
     def _create_options_panel(self):
-        """Processing options panel with sliders and dropdowns."""
-        self.options_panel = OptionsPanel(
-            self.left_panel,
-            presets=self.PRESETS,
-            smooth_modes=self.SMOOTH_MODES,
-            color_modes=self.COLOR_MODES,
-            blend_modes=self.BLEND_MODES,
-            callbacks={
-                "preset": self.on_preset_selected,
-                "smooth_mode": self.on_smoothing_mode_selected,
-                "smooth_val": self.on_smoothing_strength_changed,
-                "color_mode": self.on_color_mode_selected,
-                "color_val": self.on_color_depth_changed,
-                "blend_mode": self.on_blend_mode_selected,
-                "edge_val": self.on_edge_strength_changed,
-                "denoise": self.on_denoise_toggled,
-            },
-        )
+        """Creates the options panel dynamically based on the current pipeline."""
+        # Destroy old panel if exists
+        if self.options_panel:
+            self.options_panel.destroy()
+
+        pipeline = self.pipeline_manager.pipeline
+        if not pipeline:
+            return
+        
+        self.options_panel = pipeline.create_options_panel(self.options_container)
         self.options_panel.pack(fill="x")
+
 
     def _create_log_console(self):
         """Activity log console."""
@@ -235,19 +192,10 @@ class ToonForgeApp:
         )
         self.original_label.pack(fill="both", expand=True, pady=10)
 
-    def _create_status_bar(self):
-        """Status bar at the bottom of the left panel."""
+    def _create_progress_indicator(self):
+        """Indeterminate progress indicator shown during processing."""
         self.progress = ttk.Progressbar(self.left_panel, mode="indeterminate")
-        self.status_label = Label(
-            self.left_panel,
-            text="Ready",
-            font=(THEME["font_family"], 9),
-            bg=THEME["bg_main"],
-            fg=THEME["text_dim"],
-            # wraplength=350,
-            # justify="left"
-        )
-        self.status_label.pack(side="bottom", anchor="w")
+        # DO NOT pack here – controlled dynamically
 
     def _create_step_previews(self):
         """Creates the grid for stepped results."""
@@ -257,7 +205,7 @@ class ToonForgeApp:
     # ---------------------------
     # Core Methods
     # ---------------------------
-    def notify(self, message, is_status=True, color=None):
+    def notify(self, message, color=None):
         """Centralized logging and status updates."""
         timestamp = datetime.datetime.now().strftime("%H:%M:%S")
         self.log_console.config(state="normal")
@@ -271,9 +219,6 @@ class ToonForgeApp:
 
         self.log_console.see("end")
         self.log_console.config(state="disabled")
-
-        if is_status:
-            self.status_label.config(text=message)
 
     def open_image(self):
         file_path = filedialog.askopenfilename(
@@ -312,101 +257,33 @@ class ToonForgeApp:
 
         self.notify(f"Success: Result saved to {os.path.basename(output_path)}")
 
-    def on_preset_selected(self, event=None):
-        if not self._require_image("Load an image first to use presets.", notify = True):
+    def on_pipeline_changed(self, event=None):
+        selection = self.pipeline_combo.get()
+
+        pipeline_map = {
+            "Classic (CV)": "cv",
+            "Anime (AI)": "animegan",
+        }
+
+        key = pipeline_map.get(selection)
+        if not key:
             return
 
-        preset_name = self.options_panel.preset_combo.get()
-        if preset_name == "Custom":
-            return
+        self.pipeline_manager.set_pipeline(key)
 
-        self.notify(f"Applying Preset: {preset_name}")
-        settings = self.PRESETS[preset_name]
+        # Re-attach image if already loaded
+        if self.image_path:
+            img = cv2.imread(self.image_path)
+            self.pipeline_manager.set_image(img)
 
-        self.options_panel.load_preset(settings)
+        # Reset UI
+        self.cartoon_image = None
+        self.step_previews.clear()
 
-        self.root.after(
-            200, lambda: self.notify(f"Preset '{preset_name}' ready!", color="#4a90e2")
-        )
+        self._sync_ui_with_pipeline()
+        self.set_ui_state(bool(self.image_path))
 
-    def on_denoise_toggled(self):
-        if not self._require_image():
-            return
-
-        value = self.options_panel.denoise_var.get()
-        self.pipeline_controller.set_option("denoise", value)
-
-        self.notify(f"Denoising set to {value}. Re-process to see effect.")
-
-    # ---------------------------
-    # Slider Callbacks (Selective Recompute)
-    # ---------------------------
-    def on_smoothing_mode_selected(self, _=None):
-        if not self._require_image():
-            return
-
-        selected = self.options_panel.smooth_mode.get()
-        self.pipeline_controller.set_option("smooth_mode", self.SMOOTH_MODES[selected])
-
-        self.notify(
-            f"Smoothing algorithm changed to {selected}. Click Preview/Cartoonify to update."
-        )
-
-    def on_smoothing_strength_changed(self, _=None):
-        if not self._require_image():
-            return
-
-        value = self.options_panel.smooth_slider.get()
-        self.pipeline_controller.set_option("smooth_passes", value)
-
-        self.notify(
-            f"Smoothing algorithm set to {value}. Click Preview/Cartoonify to update."
-        )
-
-    def on_color_mode_selected(self, event=None):
-        if not self._require_image():
-            return
-
-        selected = self.options_panel.color_mode.get()
-        self.pipeline_controller.set_option("color_mode", self.COLOR_MODES[selected])
-
-        self.notify(
-            f"Color algorithm changed to {selected}. Click Preview/Cartoonify to update."
-        )
-
-    def on_color_depth_changed(self, _=None):
-        if not self._require_image():
-            return
-
-        value = self.options_panel.color_slider.get()
-        self.pipeline_controller.set_option("num_colors", value)
-
-        self.notify(f"Color Levels set to {value}. Click Preview/Cartoonify to update.")
-
-    def on_blend_mode_selected(self, _=None):
-        if not self._require_image():
-            return
-
-        selected = self.options_panel.blend_mode.get()
-        self.pipeline_controller.set_option("blend_mode", self.BLEND_MODES[selected])
-
-        self.notify(
-            f"Blend Mode changed to {selected}. Click Preview/Cartoonify to update."
-        )
-
-    def on_edge_strength_changed(self, _=None):
-        if not self._require_image():
-            return
-
-        value = self.options_panel.edge_slider.get()
-        if value % 2 == 0:
-            value += 1
-
-        self.pipeline_controller.set_option("edge_block", value)
-
-        self.notify(
-            f"Edge Strength set to {value}. Click Preview/Cartoonify to update."
-        )
+        self.notify(f"Switched to pipeline: {selection}")
 
     # ---------------------------
     # Processing
@@ -420,7 +297,7 @@ class ToonForgeApp:
     def run_processing(self, preview=True):
         if self._is_processing:
             return
-        
+
         if not self._require_image(
             "Please load an image first.",
             notify=True,
@@ -428,7 +305,7 @@ class ToonForgeApp:
             return
 
         self._is_processing = True
-        self.progress.pack(fill="x", pady=2)
+        self.progress.pack(fill="x", pady=4, side="bottom")
         self.progress.start()
         self.set_ui_state(False)
 
@@ -520,7 +397,5 @@ class ToonForgeApp:
             self.action_buttons.set_preview_enabled(False)
 
         # ---- Options ----
-        if pm.supports_options:
-            self.options_panel.set_state(enabled)
-        else:
-            self.options_panel.set_state(False)
+        self.options_panel.set_state(enabled)
+        
