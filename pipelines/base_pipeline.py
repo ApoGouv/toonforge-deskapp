@@ -17,6 +17,7 @@ class BasePipeline(ABC):
 
     def __init__(self):
         self.image = None
+        self.logger = None  # optional logging callback
 
     # ---- Lifecycle ----
     def set_image(self, image):
@@ -27,6 +28,9 @@ class BasePipeline(ABC):
         return self.image is not None
     
     # ---------- UI Hook ----------
+
+    def set_logger(self, logger_callable):
+        self.logger = logger_callable
 
     def create_options_panel(self, parent):
         """

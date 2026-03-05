@@ -15,6 +15,7 @@ class PipelineManager:
             "animegan": AnimeGANPipeline,
         }
 
+        self._logger = None
         self._pipeline_key = "cv"
         self._pipeline: BasePipeline = self.pipelines[self._pipeline_key]()
 
@@ -23,12 +24,28 @@ class PipelineManager:
     def pipeline(self) -> BasePipeline:
         return self._pipeline
 
+    def set_logger(self, logger_callable):
+        """
+        Attach a logger function that will be injected
+        into all pipeline instances.
+        """
+        self._logger = logger_callable
+
+        # Inject into current pipeline immediately
+        if self._pipeline:
+            self._pipeline.set_logger(logger_callable)
+
+
     def set_pipeline(self, key: str):
         if key not in self.pipelines:
             raise ValueError(f"Unknown pipeline: {key}")
 
         self._pipeline_key = key
         self._pipeline: BasePipeline = self.pipelines[key]()
+
+        # Inject logger automatically if it exists
+        if self._logger:
+            self._pipeline.set_logger(self._logger)
 
     # ---- Capability proxies ----
     @property

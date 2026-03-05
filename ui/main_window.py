@@ -35,6 +35,8 @@ class ToonForgeApp:
         # Set default pipeline cv or animegan
         self.pipeline_manager.set_pipeline("cv")
 
+        self.pipeline_manager.set_logger(self.notify)
+
         # --------------------------------
         # State
         # --------------------------------
